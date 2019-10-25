@@ -2739,6 +2739,7 @@ static enum sigma_cmd_result cmd_sta_set_eapaka(struct sigma_dut *dut,
 						struct sigma_cmd *cmd)
 {
 	const char *intf = get_param(cmd, "Interface");
+	const char *username = get_param(cmd, "Username");
 	const char *ifname;
 	int id;
 
@@ -2754,8 +2755,15 @@ static enum sigma_cmd_result cmd_sta_set_eapaka(struct sigma_dut *dut,
 	if (id < 0)
 		return id;
 
-	if (set_network(ifname, id, "eap", "AKA") < 0)
+	/* RFC 5448: EAP-AKA' MUST use the leading character "6" (ASCII 36
+	 * hexadecimal).
+	 */
+	if (username && username[0] == '6') {
+		if (set_network(ifname, id, "eap", "AKA'") < 0)
+			return -2;
+	} else if (set_network(ifname, id, "eap", "AKA") < 0) {
 		return -2;
+	}
 
 	return 1;
 }
@@ -8115,14 +8123,13 @@ static int sta_twt_request(struct sigma_dut *dut, struct sigma_conn *conn,
 	    !(attr1 = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA)) ||
 	    nla_put_u8(msg, QCA_WLAN_VENDOR_ATTR_TWT_SETUP_WAKE_INTVL_EXP,
 		       wake_interval_exp) ||
-	    nla_put_u8(msg, QCA_WLAN_VENDOR_ATTR_TWT_SETUP_BCAST, 0) ||
 	    nla_put_u8(msg, QCA_WLAN_VENDOR_ATTR_TWT_SETUP_REQ_TYPE, 1) ||
-	    nla_put_u8(msg, QCA_WLAN_VENDOR_ATTR_TWT_SETUP_TRIGGER,
-		       twt_trigger) ||
+	    (twt_trigger &&
+	     nla_put_flag(msg, QCA_WLAN_VENDOR_ATTR_TWT_SETUP_TRIGGER)) ||
 	    nla_put_u8(msg, QCA_WLAN_VENDOR_ATTR_TWT_SETUP_FLOW_TYPE,
 		       flow_type) ||
-	    nla_put_u8(msg, QCA_WLAN_VENDOR_ATTR_TWT_SETUP_PROTECTION,
-		       protection) ||
+	    (protection &&
+	     nla_put_flag(msg, QCA_WLAN_VENDOR_ATTR_TWT_SETUP_PROTECTION)) ||
 	    nla_put_u32(msg, QCA_WLAN_VENDOR_ATTR_TWT_SETUP_WAKE_TIME,
 			target_wake_time) ||
 	    nla_put_u32(msg, QCA_WLAN_VENDOR_ATTR_TWT_SETUP_WAKE_DURATION,
