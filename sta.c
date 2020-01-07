@@ -238,16 +238,27 @@ int set_ps(const char *intf, struct sigma_dut *dut, int enabled)
 
 	if (wifi_chip_type == DRIVER_WCN) {
 		if (enabled) {
-			snprintf(buf, sizeof(buf), "iwpriv wlan0 dump 906");
-			if (system(buf) != 0)
-				goto set_power_save;
+			snprintf(buf, sizeof(buf), "iwpriv %s setPower 1",
+				 intf);
+			if (system(buf) != 0) {
+				snprintf(buf, sizeof(buf),
+					 "iwpriv wlan0 dump 906");
+				if (system(buf) != 0)
+					goto set_power_save;
+			}
 		} else {
-			snprintf(buf, sizeof(buf), "iwpriv wlan0 dump 905");
-			if (system(buf) != 0)
-				goto set_power_save;
-			snprintf(buf, sizeof(buf), "iwpriv wlan0 dump 912");
-			if (system(buf) != 0)
-				goto set_power_save;
+			snprintf(buf, sizeof(buf), "iwpriv %s setPower 2",
+				 intf);
+			if (system(buf) != 0) {
+				snprintf(buf, sizeof(buf),
+					 "iwpriv wlan0 dump 905");
+				if (system(buf) != 0)
+					goto set_power_save;
+				snprintf(buf, sizeof(buf),
+					 "iwpriv wlan0 dump 912");
+				if (system(buf) != 0)
+					goto set_power_save;
+			}
 		}
 
 		return 0;
@@ -2997,10 +3008,10 @@ int ath6kl_client_uapsd(struct sigma_dut *dut, const char *intf, int uapsd)
 		pos = path;
 	else
 		pos++;
-	snprintf(fname, sizeof(fname),
-		 "/sys/kernel/debug/ieee80211/%s/ath6kl/"
-		 "create_qos", pos);
-	if (!file_exists(fname))
+	res = snprintf(fname, sizeof(fname),
+		       "/sys/kernel/debug/ieee80211/%s/ath6kl/"
+		       "create_qos", pos);
+	if (res < 0 || res >= sizeof(fname) || !file_exists(fname))
 		return 0; /* not ath6kl */
 
 	if (uapsd) {
@@ -3014,9 +3025,11 @@ int ath6kl_client_uapsd(struct sigma_dut *dut, const char *intf, int uapsd)
 			"20000 0\n");
 		fclose(f);
 	} else {
-		snprintf(fname, sizeof(fname),
-			 "/sys/kernel/debug/ieee80211/%s/ath6kl/"
-			 "delete_qos", pos);
+		res = snprintf(fname, sizeof(fname),
+			       "/sys/kernel/debug/ieee80211/%s/ath6kl/"
+			       "delete_qos", pos);
+		if (res < 0 || res >= sizeof(fname))
+			return -1;
 
 		f = fopen(fname, "w");
 		if (f == NULL)
