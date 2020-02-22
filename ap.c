@@ -4153,7 +4153,7 @@ static int owrt_ap_config_vap(struct sigma_dut *dut)
 	if (dut->sae_reflection)
 		owrt_ap_set_vap(dut, vap_count, "sae_reflection_attack", "1");
 	if (dut->sae_confirm_immediate)
-		owrt_ap_set_vap(dut, vap_count, "sae_confirm_immediate", "1");
+		owrt_ap_set_vap(dut, vap_count, "sae_confirm_immediate", "2");
 
 	if (dut->ap_he_dlofdma == VALUE_ENABLED && dut->ap_he_ppdu == PPDU_MU) {
 		dut->ap_txBF = 0;
@@ -7369,6 +7369,7 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
 	const char *ifname;
 	char buf[500];
 	char path[100];
+	char ap_conf_path[100];
 	enum driver_type drv;
 	const char *key_mgmt;
 #ifdef ANDROID
@@ -7406,7 +7407,8 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
 	if (drv == DRIVER_OPENWRT)
 		return cmd_owrt_ap_config_commit(dut, conn, cmd);
 
-	f = fopen(SIGMA_TMPDIR "/sigma_dut-ap.conf", "w");
+	f = fopen(concat_sigma_tmpdir(dut, "/sigma_dut-ap.conf", ap_conf_path,
+				      sizeof(ap_conf_path)), "w");
 	if (f == NULL) {
 		sigma_dut_print(dut, DUT_MSG_ERROR,
 				"%s: Failed to open sigma_dut-ap.conf",
@@ -7564,6 +7566,19 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
 			fprintf(f, "country_code=%s\n", dut->ap_countrycode);
 			fprintf(f, "ieee80211d=1\n");
 			fprintf(f, "ieee80211h=1\n");
+		}
+	}
+
+	if (drv == DRIVER_LINUX_WCN && dut->ap_mode == AP_11ax) {
+		if (dut->ap_txBF) {
+			fprintf(f, "he_su_beamformer=1\n");
+			fprintf(f, "he_su_beamformee=1\n");
+			if (dut->ap_mu_txBF)
+				fprintf(f, "he_mu_beamformer=1\n");
+		} else {
+			fprintf(f, "he_su_beamformer=0\n");
+			fprintf(f, "he_su_beamformee=0\n");
+			fprintf(f, "he_mu_beamformer=0\n");
 		}
 	}
 
@@ -7933,7 +7948,7 @@ skip_key_mgmt:
 	if (dut->sae_reflection)
 		fprintf(f, "sae_reflection_attack=1\n");
 	if (dut->sae_confirm_immediate)
-		fprintf(f, "sae_confirm_immediate=1\n");
+		fprintf(f, "sae_confirm_immediate=2\n");
 
 	if (dut->ap_p2p_mgmt)
 		fprintf(f, "manage_p2p=1\n");
@@ -8117,6 +8132,11 @@ skip_key_mgmt:
 	if (dut->ap_dpp_conf_addr && dut->ap_dpp_conf_pkhash)
 		fprintf(f, "dpp_controller=ipaddr=%s pkhash=%s\n",
 			dut->ap_dpp_conf_addr, dut->ap_dpp_conf_pkhash);
+
+	if (dut->ap_he_rtsthrshld == VALUE_ENABLED)
+		fprintf(f, "he_rts_threshold=512\n");
+	else if (dut->ap_he_rtsthrshld == VALUE_DISABLED)
+		fprintf(f, "he_rts_threshold=1024\n");
 
 	if ((dut->program == PROGRAM_VHT) ||
 	    (dut->program == PROGRAM_HE && dut->use_5g)) {
@@ -8315,26 +8335,30 @@ skip_key_mgmt:
 	/* Set proper conf file permissions so that hostapd process
 	 * can access it.
 	 */
-	if (chmod(SIGMA_TMPDIR "/sigma_dut-ap.conf",
+	if (chmod(concat_sigma_tmpdir(dut, "/sigma_dut-ap.conf", ap_conf_path,
+				      sizeof(ap_conf_path)),
 		  S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP) < 0)
 		sigma_dut_print(dut, DUT_MSG_ERROR,
 				"Error changing permissions");
 
 	gr = getgrnam("wifi");
-	if (!gr ||
-	    chown(SIGMA_TMPDIR "/sigma_dut-ap.conf", -1, gr->gr_gid) < 0)
+	if (!gr || chown(concat_sigma_tmpdir(dut, "/sigma_dut-ap.conf",
+					     ap_conf_path, sizeof(ap_conf_path)),
+			 -1, gr->gr_gid) < 0)
 		sigma_dut_print(dut, DUT_MSG_ERROR, "Error changing groupid");
 #endif /* ANDROID */
 
 	if (drv == DRIVER_QNXNTO) {
 		snprintf(buf, sizeof(buf),
-			 "hostapd -B %s%s %s%s" SIGMA_TMPDIR
-			 "/sigma_dut-ap.conf",
-			 dut->hostapd_debug_log ? "-ddKt -f " : "",
+			 "hostapd -B %s%s%s %s%s %s/sigma_dut-ap.conf",
+			 dut->hostapd_debug_log ? "-dddKt " : "",
+			 (dut->hostapd_debug_log && dut->hostapd_debug_log[0]) ?
+			 "-f " : "",
 			 dut->hostapd_debug_log ? dut->hostapd_debug_log : "",
 			 dut->hostapd_entropy_log ? " -e" : "",
 			 dut->hostapd_entropy_log ? dut->hostapd_entropy_log :
-			 "");
+			 "",
+			 dut->sigma_tmpdir);
 	} else {
 		/*
 		 * It looks like a monitor interface can cause some issues for
@@ -8348,16 +8372,19 @@ skip_key_mgmt:
 
 		snprintf(path, sizeof(path), "%shostapd",
 			 file_exists("hostapd") ? "./" : "");
-		snprintf(buf, sizeof(buf), "%s -B%s%s%s%s%s " SIGMA_TMPDIR
-			 "/sigma_dut-ap.conf",
+		snprintf(buf, sizeof(buf),
+			 "%s -B%s%s%s%s%s%s %s/sigma_dut-ap.conf",
 			 dut->hostapd_bin ? dut->hostapd_bin : path,
-			 dut->hostapd_debug_log ? " -ddKt -f" : "",
+			 dut->hostapd_debug_log ? " -dddKt" : "",
+			 (dut->hostapd_debug_log && dut->hostapd_debug_log[0]) ?
+			 " -f " : "",
 			 dut->hostapd_debug_log ? dut->hostapd_debug_log : "",
 			 dut->hostapd_entropy_log ? " -e" : "",
 			 dut->hostapd_entropy_log ? dut->hostapd_entropy_log :
 			 "",
 			 dut->use_hostapd_pid_file ?
-			 " -P " SIGMA_DUT_HOSTAPD_PID_FILE : "");
+			 " -P " SIGMA_DUT_HOSTAPD_PID_FILE : "",
+			 dut->sigma_tmpdir);
 	}
 
 	sigma_dut_print(dut, DUT_MSG_DEBUG, "hostapd command: %s", buf);
@@ -8373,6 +8400,25 @@ skip_key_mgmt:
 		send_resp(dut, conn, SIGMA_ERROR,
 			  "errorCode,Failed to talk to hostapd");
 		return 0;
+	}
+
+	if (dut->ap_ba_bufsize != BA_BUFSIZE_NOT_SET) {
+		int buf_size;
+
+		if (dut->ap_ba_bufsize == BA_BUFSIZE_256)
+			buf_size = 256;
+		else
+			buf_size = 64;
+
+		if ((drv == DRIVER_WCN || drv == DRIVER_LINUX_WCN) &&
+		    sta_set_addba_buf_size(dut, ifname, buf_size)) {
+			send_resp(dut, conn, SIGMA_ERROR,
+				  "ErrorCode,set_addba_buf_size failed");
+			return STATUS_SENT_ERROR;
+		}
+
+		sigma_dut_print(dut, DUT_MSG_INFO,
+				"setting addba buf_size=%d", buf_size);
 	}
 
 	if (drv == DRIVER_LINUX_WCN) {
@@ -8399,6 +8445,12 @@ skip_key_mgmt:
 			return -1;
 		}
 	}
+
+	/* Configure the driver with LDPC setting for AP mode as a new vdev is
+	 * created when hostapd is started.
+	 */
+	if (drv == DRIVER_WCN || drv == DRIVER_LINUX_WCN)
+		wcn_config_ap_ldpc(dut, ifname);
 
 	if (dut->ap_l2tif) {
 		snprintf(path, sizeof(path),
@@ -8475,14 +8527,16 @@ skip_key_mgmt:
 		return 0;
 	}
 
-	if (dut->program == PROGRAM_60GHZ && dut->ap_num_ese_allocs > 0) {
-		/* wait extra time for AP to start */
-		sleep(2);
-		if (ap_set_60g_ese(dut, dut->ap_num_ese_allocs,
-				   dut->ap_ese_allocs)) {
-			send_resp(dut, conn, SIGMA_ERROR,
-				  "errorCode,Could not set ExtSch");
-			return 0;
+	if (dut->program == PROGRAM_60GHZ) {
+		if (dut->ap_num_ese_allocs > 0) {
+			/* wait extra time for AP to start */
+			sleep(2);
+			if (ap_set_60g_ese(dut, dut->ap_num_ese_allocs,
+					   dut->ap_ese_allocs)) {
+				send_resp(dut, conn, SIGMA_ERROR,
+					  "errorCode,Could not set ExtSch");
+				return 0;
+			}
 		}
 		if (dut->ap_fixed_rate) {
 			sigma_dut_print(dut, DUT_MSG_DEBUG,
@@ -9064,6 +9118,13 @@ static enum sigma_cmd_result cmd_ap_reset_default(struct sigma_dut *dut,
 			if (drv == DRIVER_LINUX_WCN) {
 				dut->ap_ldpc = VALUE_ENABLED;
 				wcn_config_ap_ldpc(dut, get_main_ifname(dut));
+#ifdef NL80211_SUPPORT
+				if (wcn_set_he_ltf(dut, get_main_ifname(dut),
+						   QCA_WLAN_HE_LTF_AUTO)) {
+					sigma_dut_print(dut, DUT_MSG_ERROR,
+							"Failed to set LTF in ap_reset_default");
+				}
+#endif /* NL80211_SUPPORT */
 			}
 		}
 		if (get_openwrt_driver_type() == OPENWRT_DRIVER_ATHEROS)
@@ -12492,6 +12553,27 @@ static enum sigma_cmd_result wcn_ap_set_rfeature(struct sigma_dut *dut,
 			return STATUS_SENT_ERROR;
 		}
 		run_iwpriv(dut, ifname, "enable_short_gi %d", fix_rate_sgi);
+	}
+
+	val = get_param(cmd, "LTF");
+	if (val) {
+#ifdef NL80211_SUPPORT
+		if (strcmp(val, "3.2") == 0) {
+			wcn_set_he_ltf(dut, ifname, QCA_WLAN_HE_LTF_1X);
+		} if (strcmp(val, "6.4") == 0) {
+			wcn_set_he_ltf(dut, ifname, QCA_WLAN_HE_LTF_2X);
+		} else if (strcmp(val, "12.8") == 0) {
+			wcn_set_he_ltf(dut, ifname, QCA_WLAN_HE_LTF_4X);
+		} else {
+			send_resp(dut, conn, SIGMA_ERROR,
+				  "errorCode,LTF value not supported");
+			return STATUS_SENT;
+		}
+#else /* NL80211_SUPPORT */
+		sigma_dut_print(dut, DUT_MSG_ERROR,
+				"LTF cannot be set without NL80211_SUPPORT defined");
+		return ERROR_SEND_STATUS;
+#endif /* NL80211_SUPPORT */
 	}
 
 	return SUCCESS_SEND_STATUS;
