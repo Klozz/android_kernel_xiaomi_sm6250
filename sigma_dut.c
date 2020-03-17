@@ -1012,7 +1012,7 @@ int main(int argc, char *argv[])
 
 	for (;;) {
 		c = getopt(argc, argv,
-			   "aAb:Bc:C:dDE:e:fF:gGhH:j:J:i:Ik:K:l:L:m:M:nN:o:O:p:P:qr:R:s:S:tT:uv:VWw:x:y:z:Z:23");
+			   "aAb:Bc:C:dDE:e:fF:gGhH:j:J:i:Ik:K:l:L:m:M:nN:o:O:p:P:qQr:R:s:S:tT:uv:VWw:x:y:z:Z:23");
 		if (c < 0)
 			break;
 		switch (c) {
