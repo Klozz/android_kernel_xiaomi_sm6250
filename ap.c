@@ -2485,6 +2485,25 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
 		}
 	}
 
+	val = get_param(cmd, "BeaconProtection");
+	if (val)
+		dut->ap_beacon_prot = atoi(val);
+
+	val = get_param(cmd, "Transition_Disable");
+	if (val) {
+		if (atoi(val)) {
+			val = get_param(cmd, "Transition_Disable_Index");
+			if (!val) {
+				send_resp(dut, conn, SIGMA_INVALID,
+					  "errorCode,Transition_Disable without Transition_Disable_Index");
+				return STATUS_SENT;
+			}
+			dut->ap_transition_disable = 1 << atoi(val);
+		} else {
+			dut->ap_transition_disable = 0;
+		}
+	}
+
 	return 1;
 }
 
@@ -4146,6 +4165,15 @@ static int owrt_ap_config_vap(struct sigma_dut *dut)
 	if (dut->ap_pmksa == 1) {
 		snprintf(buf, sizeof(buf), "%d", dut->ap_pmksa_caching);
 		owrt_ap_set_vap(dut, vap_id, "disable_pmksa_caching", buf);
+	}
+
+	if (dut->ap_beacon_prot)
+		owrt_ap_set_vap(dut, vap_id, "beacon_prot", "1");
+
+	if (dut->ap_transition_disable) {
+		snprintf(buf, sizeof(buf), "0x%02x",
+			 dut->ap_transition_disable);
+		owrt_ap_set_vap(dut, vap_id, "transition_disable", buf);
 	}
 
 	if (dut->rsne_override) {
@@ -7876,6 +7904,13 @@ skip_key_mgmt:
 	if (dut->ap_pmksa && dut->ap_pmksa_caching)
 		fprintf(f, "disable_pmksa_caching=1\n");
 
+	if (dut->ap_beacon_prot)
+		fprintf(f, "beacon_prot=1\n");
+
+	if (dut->ap_transition_disable)
+		fprintf(f, "transition_disable=0x%02x\n",
+			dut->ap_transition_disable);
+
 	switch (dut->ap_pmf) {
 	case AP_PMF_DISABLED:
 		break;
@@ -9176,6 +9211,8 @@ static enum sigma_cmd_result cmd_ap_reset_default(struct sigma_dut *dut,
 	dut->ap_group_mgmt_cipher = AP_NO_GROUP_MGMT_CIPHER_SET;
 	dut->ap_passphrase[0] = '\0';
 	dut->ap_psk[0] = '\0';
+	dut->ap_beacon_prot = 0;
+	dut->ap_transition_disable = 0;
 
 	dut->dpp_conf_id = -1;
 	free(dut->ap_dpp_conf_addr);

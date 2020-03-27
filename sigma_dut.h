@@ -81,6 +81,8 @@ struct sigma_dut;
 #define MAX_PARAMS 100
 #define MAX_RADIO 3
 
+#define NAN_AWARE_IFACE "wifi-aware0"
+
 /* Set default operating channel width 80 MHz */
 #define VHT_DEFAULT_OPER_CHWIDTH AP_80_VHT_OPER_CHWIDTH
 
@@ -674,6 +676,8 @@ struct sigma_dut {
 	unsigned int ap_akm_values;
 	int ap_pmksa;
 	int ap_pmksa_caching;
+	int ap_beacon_prot;
+	u8 ap_transition_disable;
 	int ap_80plus80;
 	int ap_oper_chn;
 
