@@ -2234,6 +2234,16 @@ static enum sigma_cmd_result cmd_sta_set_psk(struct sigma_dut *dut,
 			return STATUS_SENT_ERROR;
 		}
 	}
+
+	val = get_param(cmd, "Clear_RSNXE");
+	if (val && strcmp(val, "1") == 0 &&
+	    (wpa_command(intf, "SET rsnxe_override_assoc ") ||
+	     wpa_command(intf, "SET rsnxe_override_eapol "))) {
+		send_resp(dut, conn, SIGMA_ERROR,
+			  "errorCode,Failed to clear RSNXE");
+		return ERROR_SEND_STATUS;
+	}
+
 	if (dut->sae_pwe == SAE_PWE_LOOP && get_param(cmd, "PasswordId"))
 		sae_pwe = 3;
 	else if (dut->sae_pwe == SAE_PWE_LOOP)
@@ -6454,14 +6464,12 @@ static enum sigma_cmd_result cmd_sta_reassoc(struct sigma_dut *dut,
 			status = ERROR_SEND_STATUS;
 			goto close_mon_conn;
 		}
-		res = snprintf(buf, sizeof(buf), "DRIVER FASTREASSOC %s %d",
+		res = snprintf(buf, sizeof(buf), "FASTREASSOC %s %d",
 			       bssid, chan);
-		if (res > 0 && res < (int) sizeof(buf))
-			res = wpa_command(intf, buf);
-
-		if (res < 0 || res >= (int) sizeof(buf)) {
+		if (res < 0 || res >= (int) sizeof(buf) ||
+		    wcn_driver_cmd(intf, buf) < 0) {
 			send_resp(dut, conn, SIGMA_ERROR,
-				  "errorCode,Failed to run DRIVER FASTREASSOC");
+				  "errorCode,Failed to run FASTREASSOC");
 			goto close_mon_conn;
 		}
 		sigma_dut_print(dut, DUT_MSG_INFO,
@@ -6682,20 +6690,18 @@ static enum sigma_cmd_result sta_get_pmk(struct sigma_dut *dut,
 		if (strncmp(pos, bssid, 17) == 0) {
 			pos = strchr(pos, ' ');
 			if (!pos)
-				goto fail;
+				break;
 			pos++;
 			pos = strchr(pos, ' ');
 			if (!pos)
-				goto fail;
+				break;
 			pos++;
 			tmp = strchr(pos, ' ');
 			if (!tmp)
-				goto fail;
+				break;
 			*tmp = '\0';
 			break;
 		}
-
-	fail:
 		pos = strchr(pos, '\n');
 		if (pos)
 			pos++;
@@ -7968,6 +7974,9 @@ static enum sigma_cmd_result cmd_sta_reset_default(struct sigma_dut *dut,
 		hlp_thread_cleanup(dut);
 #endif /* ANDROID */
 	}
+
+	if (dut->program == PROGRAM_QM)
+		wpa_command(intf, "SET interworking 1");
 
 	dut->akm_values = 0;
 	dut->sta_ft_ds = 0;
