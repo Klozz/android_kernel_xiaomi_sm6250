@@ -20,7 +20,7 @@ endif
 
 ifeq ($(call is-board-platform-in-list,$(MSMSTEPPE) atoll),true)
 TARGET := talos
-AUDIO_SELECT  := CONFIG_SND_SOC_SM6150=m
+AUDIO_SELECT  := CONFIG_SND_SOC_SM6150=y
 endif
 
 ifeq ($(call is-board-platform,$(TRINKET)),true)

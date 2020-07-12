@@ -24,7 +24,7 @@ include $(MY_LOCAL_PATH)/asoc/codecs/Android.mk
 include $(MY_LOCAL_PATH)/asoc/codecs/wcd934x/Android.mk
 endif
 
-ifeq ($(call is-board-platform-in-list, atoll),true)
+#ifeq ($(call is-board-platform-in-list, atoll),true)
 UAPI_OUT := $(PRODUCT_OUT)/obj/vendor/qcom/opensource/audio-kernel/4.0/include
 
 $(shell mkdir -p $(UAPI_OUT)/linux;)
@@ -43,7 +43,7 @@ include $(MY_LOCAL_PATH)/4.0/dsp/codecs/Android.mk
 include $(MY_LOCAL_PATH)/4.0/soc/Android.mk
 include $(MY_LOCAL_PATH)/4.0/asoc/Android.mk
 include $(MY_LOCAL_PATH)/4.0/asoc/codecs/Android.mk
-endif
+#endif
 
 ifeq ($(call is-board-platform-in-list,sdm670 msmnile),true)
 $(shell rm -rf $(PRODUCT_OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/aqt1000/Module.symvers)

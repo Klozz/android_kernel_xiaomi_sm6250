@@ -34,7 +34,7 @@ endif
 
 ifeq ($(call is-board-platform,atoll),true)
 TARGET := atoll
-AUDIO_SELECT  := CONFIG_SND_SOC_ATOLL=m
+AUDIO_SELECT  := CONFIG_SND_SOC_ATOLL=y
 endif
 
 AUDIO_CHIPSET := audio
